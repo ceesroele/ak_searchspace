@@ -1,39 +1,27 @@
-import os
-import numpy as np
-import tensorflow as tf
-from tensorflow.keras.datasets import imdb
-from sklearn.datasets import load_files
+import autokeras as ak
+import kerastuner as kt
+print(f'Autokeras {ak.__version__}, Kerastuner {kt.__version__}')
 
-dataset = tf.keras.utils.get_file(
-    fname="aclImdb.tar.gz",
-    origin="http://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz",
-    extract=True,
+
+early_stop = tf.keras.callbacks.EarlyStopping(
+    monitor='val_loss', min_delta=0.01, patience=2, verbose=0
 )
 
-# set path to dataset
-IMDB_DATADIR = os.path.join(os.path.dirname(dataset), 'aclImdb')
+MAX_TRIALS = 4
+EPOCHS = 2
+TRAIN = False
 
-classes = ['pos', 'neg']
-train_data = load_files(os.path.join(IMDB_DATADIR, 'train'), shuffle=True, categories=classes)
-test_data = load_files(os.path.join(IMDB_DATADIR,  'test'), shuffle=False, categories=classes)
+# Initialize the text classifier.
+clf = ak.TextClassifier(
+    overwrite=True,  # overwrite any possible previous results
+    max_trials=MAX_TRIALS,  #It only tries 2 models as a quick demo.
+    seed=9)  # Set seed for randomizer to be able to reproduce results
 
-x_train = np.array(train_data.data)
-y_train = np.array(train_data.target)
-x_test = np.array(test_data.data)
-y_test = np.array(test_data.target)
-
-print(f'x_train.shape = {x_train.shape}')  # (25000,)
-print(f'y_train.shape = {y_train.shape}')  # (25000, 1)
-
-# For a demo, only use a subset of the data for training
-ITEMS=1000
-
-x_train = x_train[:ITEMS]
-y_train = y_train[:ITEMS]
-
-print(f'Reduced dataset to {ITEMS} items')
-
-x_test = x_test[:ITEMS//10]
-y_test = y_test[:ITEMS//10]
-
-print(f'Reduced testset to {ITEMS//10} items')
+if TRAIN:
+    # Feed the text classifier with training data.
+    clf.fit(
+        x_train,
+        y_train,
+        epochs=EPOCHS,
+        callbacks=[early_stop],
+        verbose=2)
