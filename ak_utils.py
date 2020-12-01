@@ -1,5 +1,4 @@
 from IPython.core.display import display, HTML
-from collections.abc import MutableMapping
 import json
 from pprint import pprint
 from copy import deepcopy
@@ -13,7 +12,7 @@ def html_format(obj, indent = 1):
             htmls.append(html_format(k))
         return '['+ ", ".join(htmls)+']'
 
-    if isinstance(obj, DeepDict) or isinstance(obj, dict):
+    if isinstance(obj, dict):
         htmls = []
         for k,v in obj.items():
             htmls.append("<span style='font-style: italic; color: #888'>%s</span>: %s" % (k,html_format(v,indent+1)))
@@ -24,6 +23,7 @@ def html_format(obj, indent = 1):
         obj = obj[1:-1]
         
     return str(obj)
+
 
 def cascade_dict(flat_dict, cur_output={}, key_separator='/', skip_first=False):
     """Split dictionary by keys to create a cascaded dictionary, 
@@ -60,11 +60,11 @@ class AutoKerasSearchSpace(object):
         """Initialize with the 'project_name' used for the AutoKeras task"""
         self.project_name = project_name
         self.config = None
-        self.parameters = DeepDict()
+        #self.parameters = DeepDict()
         self.parameters_dict = {}
-        self.conditions = DeepDict()
+        #self.conditions = DeepDict()
         self.block_types = []
-        self.block_type_config = DeepDict()
+        #self.block_type_config = DeepDict()
         self.block_type_config_dict = {}
         self.defaults = {'generic': {}}
         
@@ -74,7 +74,7 @@ class AutoKerasSearchSpace(object):
             fname = f'./{self.project_name}/oracle.json'
             with open(fname) as f:
                 self.config = json.load(f)
-            self._parse()
+            #self._parse()
             self._read_config()
         except:
             print(f'Failed to read {fname}')    
@@ -231,145 +231,15 @@ class AutoKerasSearchSpace(object):
                 out_d[block_type][key] = possible
         assert len(d) == len(out_d), f"dictionary length changed from {len(d)} to {len(out_d)}"
         return out_d
-
-    ## FIXME: I want to remove this
-    def get_defaults_for_block_type(self, block_type):
-        d = DeepDict()
-        d[block_type] = deepcopy(self.block_type_config[block_type])
-        d['generic'] = deepcopy(self.parameters)
-        return d
-            
-    ## FIXME: I want to remove this
-    def XXXfill_in_defaults(self, orig_dict, default_dict):
-        #assert isinstance(orig_dict, DeepDict), "Wrong type for orig_dict, must be DeepDict"
-        #assert type(default_dict) == dict, "Wrong type for default-dict, must be dict"
-        d = deepcopy(orig_dict)
-        for k, v in default_dict.items():
-            r = d[k]
-            if type(r) == list:
-                t = []
-                for p in r:
-                    if p == v:
-                        t.append('<text style="color:blue">'+str(v)+'</text>')
-                    else:
-                        t.append(p)
-                d[k] = t
-            else:
-                d[k] = '<text style="color:blue">'+str(v)+'</text>'
-        return d
-                    
-
-# FIXME: I want to remove this
-class DeepDict(MutableMapping):
-    """Dictionary in which complex keys are broken up into separate keys serving to cascade the dictionary.
-    Example: DeepDict['foo/bar'] = 10 gets the structure {'foo': {'bar': 10}}"""
-    def __init__(self, *args, **kwargs):
-        """Use the object dict"""
-        self.__dict__.update(*args, **kwargs)
     
-    def __setitem__(self, key, value):
-        """if key is a string, split it into a list if it contains a '/'
-        if key is a list, cascade into deeper dictionaries
-        otherwise act as with a normal dictionary"""
-        if type(key) == str:
-            l = key.split('/')
-            if len(l) > 1:
-                key = l
-            
-        if type(key) == list:
-            if len(key) == 0:
-                pass
-            elif len(key) == 1:
-                self.__dict__[key[0]] = value
-            else:
-                k = key[0]
-                rest = key[1:]
-                
-                d = None
-                if k in self.__dict__.keys():
-                    d = self.__dict__[k]
-                else:
-                    d = DeepDict()        
-                    self.__dict__[k] = d
-                d[rest] = value
+    def count_parameter_values(self, block_type=None):
+        """Count the number of values for hyperparameters. If `block_type` is set, only for that block_type."""
+        if block_type:
+            return sum([len(x[2]) for x in self._config_per_block_type()[block_type]])
         else:
-            self.__dict__[key] = value
-    
-    def __getitem__(self, key):
-        if type(key) == str:
-            l = key.split('/')
-            if len(l) > 1:
-                l_key = l
-            else:
-                l_key = [key]
-        elif type(key) == list:
-            l_key = key
-        else:
-            return self.__dict__[key]
-            
-        res = self.__dict__
-        for k in l_key:
-            try:
-                res = res[k]
-            except KeyError as e:
-                print(f"orig key: {key}, subkey: {k}, dict keys: {str(res.keys())}")
-                raise e
-        return res
-    
-    def __delitem__(self, key):
-        del self.__dict__[key]
-    
-    def __iter__(self):
-        return iter(self.__dict__)
-    
-    def __len__(self):
-        return len(self.__dict__)
-    
-    # The final two methods aren't required, but nice for demo purposes:
-    def __str__(self):
-        """returns simple dict representation of the mapping"""
-        return str(self.__dict__)
-    
-    def __repr__(self):
-        return repr(self.__dict__)
-    
-    def todict(self):
-        d = {}
-        for k, v in self.__dict__.items():
-            if isinstance(v, DeepDict):
-                d[k] = v.todict()
-            else:
-                d[k] = v
-        return d
-    
-    def flatten(self, toflattendict=None):
-        if toflattendict is None:
-            toflattendict = self.__dict__
-        d = {}
-        for k, v in toflattendict.items():
-            if isinstance(v, DeepDict):
-                p = self.flatten(v.__dict__)
-                for k1, v1 in p.items():
-                    d[f'{k}/{k1}'] = v1
-            else:
-                d[k] = v
-        return d
-    
-    def count_values(self, key=None):
-        """Count the number of values"""
-        if key:
-            return self.__getitem__(key).count_values()
-        else:
-            count = 0
-            for k, v in self.__dict__.items():
-                if isinstance(v, DeepDict):
-                    count += v.count_values()
-                elif type(v) == list:
-                    count += len(v)
-                else:
-                    count += 1
-            return count
-    
+            p = [x[2] for x in self._config]
+            print(p)
+            return sum([len(x[2]) for x in self._config]) 
 
 class ldict(dict):
     """Maintain dictionary as with equal length lists as values, e.g. 
@@ -414,42 +284,6 @@ def test_cascade_dict():
     d = cascade_dict(input3, skip_first=False)
     assert d == output3
 
-# ------------- DeepDict tests -------------
-              
-def _deepdict_setup():
-    d = DeepDict()
-    d['fie'] = 7
-    d['foo/bar'] = [1,2,3]
-    d['foo/fiefo'] = {'a': '1'}
-    return d
-
-def test_deepdict_structure():
-    d = _deepdict_setup()
-    assert d['foo']['bar'] == [1,2,3]
-    assert d['fie'] == 7
-    assert d['fie'] != 'bar'
-    assert d['foo']['fiefo']['a'] == '1'
-    
-def test_deepdict_count_values():
-    d = _deepdict_setup()
-    assert d.count_values() == 5
-
-def test_deepdict_keyerror():
-    d = _deepdict_setup()
-    has_keyerror = False
-    try:
-        d['no_key_for_this']
-    except KeyError as e:
-        has_keyerror = True
-    assert has_keyerror == True
-    
-def test_deepdict_flatten():
-    d = _deepdict_setup()
-    x = d.flatten()
-    assert type(x) == dict
-    assert 'foo/bar' in x.keys()
-    assert x['foo/bar'] == d['foo/bar']
-    
     
 # ------------- ldict tests -----------------------
 def test_ldict():
