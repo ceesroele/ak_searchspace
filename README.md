@@ -37,7 +37,7 @@ The focus here is on the AutoKeras architecture search space and on model search
 Findings are specific for AutoKeras and will be of interest only to those using AutoKeras and wanting to better understand what it is doing.
 The offered environment to get information on trials from AutoKeras will be primarily helpful for those that feel comfortable with python and pandas.
 
-To get straight to the code for reporting on AutoKeras trials, you can skip this text and jump straight to the ["Understanding AutoKeras" notebook]("./Understanding\ Autokeras.ipynb").
+To get straight to the code for reporting on AutoKeras trials, you can skip this text and jump straight to the ["Understanding AutoKeras" notebook](./Understanding%20Autokeras.ipynb).
 
 
 ## AutoKeras architecture search
