@@ -53,11 +53,11 @@ def test_autokerassearchspace_load_trials():
     akss.load()
     akss.load_trials()
     
-def test_autokerassearchspace_str():
+def test_autokerassearchspace_summary():
     akss = _autokerassearchspace_setup()
     akss.load()
     akss.load_trials()
-    a = str(akss)
+    a = akss.summary()
     assert a == "3 architecture types: ['vanilla', 'transformer', 'bert'], 4 trials, 3 epochs", f'Got: {a}'
 
 def test_autokerassearchspace_fill_in_defaults():
