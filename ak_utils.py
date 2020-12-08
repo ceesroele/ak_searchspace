@@ -14,12 +14,22 @@ import os
 import tensorflow as tf
 import plotly.graph_objects as go
 import plotly.express as px
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 
-USE_PLOTLY = False
+# By default I turn off using Plotly and use matplotlib. 
+# Reason is that the latter produces images that are previewable in github.
+USE_PLOTLY = True
+
+# Let matlibplot fill the screen rather than remain a tiny box
+plt.rcParams["figure.figsize"] = 20, 10
+# copy the standard palette of colors
+COLORS = [c['color'] for c in mpl.rcParams['axes.prop_cycle']]
 
 def html_format(obj, indent = 1):
     """HTML formatter specific for the `DeepDict` library type and for specific HTML markup"""
+    
     if isinstance(obj, list):
         htmls = []
         for k in obj:
@@ -68,12 +78,13 @@ def cascade_dict(flat_dict, cur_output={}, key_separator='/', skip_first=False):
                 d[p] = cascade_dict({key_separator.join(l[1:]): v}, cur_output=cur_val)
     return d
     
- 
+
 class AutoKerasSearchSpace(object):
     """Read and represent the search space of an AutoKeras project"""
     
     def __init__(self, project_name, dir='.'):
         """Initialize with the 'project_name' used for the AutoKeras task"""
+        
         self.dir = dir
         self.project_name = project_name
         self.block_type_config_dict = {}
@@ -81,6 +92,7 @@ class AutoKerasSearchSpace(object):
         
     def load(self):
         """Load the search space definition from the oracle.json file of the project"""
+        
         try:
             fname = f'{self.dir}/{self.project_name}/oracle.json'
             with open(fname) as f:
@@ -177,6 +189,7 @@ class AutoKerasSearchSpace(object):
     
     def trial_config(self, trial_id) -> dict:
         """Hyperparameter values for trial"""
+        
         filename = f'{self.dir}/{self.project_name}/trial_{trial_id}/trial.json'
         with open(filename, 'r') as f:
             j_data = json.load(f)
@@ -216,6 +229,7 @@ class AutoKerasSearchSpace(object):
     
     def count_parameter_values(self, block_type=None) -> int:
         """Count the number of values for hyperparameters. If `block_type` is set, only for that block_type."""
+        
         if block_type:
             return sum([len(x[2]) for x in self._config_per_block_type()[block_type]])
         else:
@@ -224,15 +238,16 @@ class AutoKerasSearchSpace(object):
             return sum([len(x[2]) for x in self._config])
         
     def hyperparameters_per_block_type(self) -> pd.DataFrame:
-        """The number of hyperparameters for each `block_type`.
+        """The number of hyperparameters for each `block_type`
         
         Returns
         -------
           DataFrame:
             index: block_type
-            count: number of parameters specific for block_type
-            count_plus_generic: number of aprameters specific for block_type plus the number of common parameters
+            count: number of hyperparameters specific for `block_type`
+            count_plus_generic: number of parameters specific for block_type plus the number of common parameters
         """
+        
         d = {}
         block_types = [b for b in self._config_per_block_type().keys()]
         generic_count = 0
@@ -249,8 +264,10 @@ class AutoKerasSearchSpace(object):
     
 
 class AutoKerasTrials(AutoKerasSearchSpace):
+    """Data on trials for an AutoKeras project"""
+    
     def __init__(self, project_name, dir='.'):
-        super(AutoKerasTrials, self).__init__(project_name, dir)
+        super(AutoKerasTrials, self).__init__(project_name=project_name, dir=dir)
         self._trial_dict = ldict()
         self._trials = {}
             
@@ -305,15 +322,13 @@ class AutoKerasTrials(AutoKerasSearchSpace):
                 
     def load_trials(self, metric='val_accuracy', with_reference=False):
         """Load data on all trials and return as DataFrame"""
+        
         self._trial_dict = ldict()
         self._trials = {}
         trial_lst = glob(f'{self.dir}/{self.project_name}/trial_*/trial.json')
         trial_lst.sort(key=os.path.getctime)
-        for fname in trial_lst: 
-            #try:
+        for fname in trial_lst:
             self._load_trial_data(fname, metric=metric)
-            #except Exception as a:
-            #    print(f"Error reading file {fname}: {a}")
         
         if with_reference:
             ref = ImageClassifierReference()
@@ -342,6 +357,8 @@ class AutoKerasTrials(AutoKerasSearchSpace):
         return df
     
     def count_trials(self):
+        """Number of trials"""
+        
         return self._trial_dict.depth()
     
     def count_epochs(self):
@@ -352,10 +369,26 @@ class AutoKerasTrials(AutoKerasSearchSpace):
         
         return len([x for x in self._trial_dict.keys() if x.startswith('step')])
     
-    def summary(self):
+    def get_block_types(self) -> list:
+        """Get the block types. Remove 'generic' unless it is the only type."""
+        
         block_types = list(self._config_per_block_type().keys())
         if len(block_types) > 1 and 'generic' in block_types:
             block_types.remove('generic')
+        return block_types
+    
+    def trials_per_block_type(self) -> pd.DataFrame:
+        """DataFrame with block_types (as index) and their number of trials."""
+        
+        df = self.load_trials(with_reference=False)
+        df = df[['trial_id', 'block_type']].groupby('block_type').count().reset_index()
+        df.columns = ['block_type', 'count']
+        return df
+    
+    def summary(self):
+        """Provide a summary of the project: architecture types, number of trials, and number of epochs trained."""
+        
+        block_types = self.get_block_types()
 
         n = len(block_types)
         plural_postfix = 's' if n > 0 else ''        
@@ -367,13 +400,18 @@ class Analyzer(object):
     
     def __init__(self, project_name=None, dir='.'):
         assert project_name, "'project_name' must be set"
-        analyzer = AutoKerasTrials(project_name, dir=dir)
+        analyzer = AutoKerasTrials(project_name=project_name, dir=dir)
         analyzer.load()
         analyzer.load_trials()
         self.analyzer = analyzer
         self.next_trial_counter = 0
     
     def display_search_space(self, architecture_type=None):
+        """Display overview of hyperparameters and their possible and default values.
+        
+        Arguments:
+          architecture_type: if set, include only hyperparameters for this architecture type (`block_type`)"""
+        
         for bt, conf in self.analyzer.display_configuration().items():
             if bt == 'generic' or not architecture_type or architecture_type == bt:
                 display(HTML(f'<h3>{bt}</h3>'))
@@ -419,12 +457,15 @@ class Analyzer(object):
                 # Down to matplotlib
                 x = steps.reset_index()['index']
                 y = steps['val_accuracy']
-                plt.scatter(x, y)
+                plt.plot(x, y)
                 plt.show()
         else:
-            block_types = df['block_type'].unique()
+            block_types = self.analyzer.get_block_types()
+            d = {}
             if USE_PLOTLY:
                 fig = go.Figure()
+            else:
+                b_to_c = {b: c for b, c in zip(block_types, COLORS[:len(block_types)])}
 
             for bt in block_types:
                 crit = df['block_type'] == bt
@@ -447,61 +488,92 @@ class Analyzer(object):
                              name=bt,
                              line=linedict,
                              visible=True))
+                else:
+                    x = cur_df['index']
+                    y = cur_df['val_accuracy']
+                    #c = [b_to_c[bt]]*len(cur_df)
+                    #plt.scatter(x, y, c=c)
+                    d[bt] = b_to_c[bt]
+                    plt.plot(x, y)
 
+            title = 'Validation accuracy per epoch for trial resulting in max accuracy for each type'
             if USE_PLOTLY:
-                fig.update_layout(title='Validation accuracy per epoch for trail resulting in max accuracy for each type')
+                fig.update_layout(title=title)
                 fig.show()
             else:
+                plt.title(title)
+                handles = list(map(lambda x: mpatches.Patch(color=x[1], label=x[0]), d.items()))
+                plt.legend(handles=handles, loc='lower right', fontsize=14)
                 plt.show()
-            
+
     def plot_trials_over_time(self):
+        """Display scatter chart showing accuracy of evaluated models over time"""
+        
         df = self.dataframe_trials(with_reference=False)
         if USE_PLOTLY:
-            fig = px.scatter(df.sort_values(by='mtime', ascending=True), x="mtime", y="max_val_accuracy", color='block_type', title="Model searches - validation accuracy", hover_data=['trial_id'])
+            fig = px.scatter(df.sort_values(by='mtime', ascending=True), x="mtime", y="max_val_accuracy", color='block_type', title="Model searches - validation accuracy per evaluated model over time", hover_data=['trial_id'])
             fig.show()
         else:
-            # FIXME
             ndf = df.sort_values(by='mtime', ascending=True)
-            x = ndf['mtime']
-            y = ndf['max_val_accuracy']
-            def bt_to_color(bt):
-                if bt == 'xception':
-                    return 'red'
-                elif bt == 'resnet':
-                    return 'blue'
-                elif bt == 'vanilla':
-                    return 'green'
-                else:
-                    return 'black'
-            ndf['color'] = ndf['block_type'].apply(bt_to_color)
-            c = ndf['color']
-            plt.scatter(x, y, c=c)
+            block_types = self.analyzer.get_block_types()
+            b_to_c = {b: c for b, c in zip(block_types, COLORS[:len(block_types)])}
+            ndf['color'] = ndf['block_type'].apply(lambda b: b_to_c[b])
+            
+            d = {}
+            for bt in block_types:
+                criterion = ndf['block_type'] == bt
+                bt_df = ndf[criterion]
+                x = bt_df['mtime']
+                y = bt_df['max_val_accuracy']
+                c = bt_df['color']
+                d[bt] = plt.scatter(x, y, c=c)
+            plt.legend(tuple(d.values()), tuple(d.keys()), loc='lower right', fontsize=14)
+            plt.title('Model searches - validation accuracy per evaluated model over time')
             plt.show()
         
-    def plot_count_per_architecture_type(self):
-        return self.analyzer.hyperparameters_per_block_type().plot.pie(y='count', autopct='%1.f%%', title='Number of parameters per block_type')
-    
-    def plot_best_step(self, block_type=None):
+    def plot_compare_architecture_types(self):
+        """Display comparison of architectures with regards to search space and project"""
+        
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
+        
+        d1 = self.analyzer.hyperparameters_per_block_type()
+        d1 = d1.reset_index().rename(columns={'index': 'block_type'})
+
+        ax1.set_title('Hyperparameters per architecture type')
+        ax1.pie(d1['count'], labels=d1['block_type'], autopct='%1.f%%')
+
+        ax2.set_title('Hyperparameters including the generic ones per architecture type')
+        ax2.pie(d1['count_plus_generic'], labels=d1['block_type'], autopct='%1.f%%')
+        
+        d2 = self.analyzer.trials_per_block_type()
+        ax3.set_title('Number of trials per architecture type')
+        ax3.pie(d2['count'], labels=d2['block_type'], autopct='%1.f%%')        
+        
+        plt.show()
+            
+    def plot_best_step(self, architecture_type=None):
+        """Display histogram with best step, that is, the epoch at which the highest accuracy was reached."""
+        
         df = self.dataframe_trials(with_reference=False)
-        if block_type == 'all':
-            block_types = list(self.analyzer._config_per_block_type().keys())
-            if len(block_types) > 1 and 'generic' in block_types:
-                block_types.remove('generic')
-            print('block types are: ', block_types)
+        if architecture_type == 'all':
+            block_types = self.analyzer.get_block_types()
             for bt in block_types:
                 condition = df['block_type'] == bt
                 best_step_df = df[condition]
-                display(best_step_df.hist('best_step')) #, title='Frequency of best step')
+                best_step_df.hist('best_step')
         else:
             condition = True
-            if block_type:
-                condition = df['block_type'] == block_type
+            if architecture_type:
+                condition = df['block_type'] == architecture_type
                 best_step_df = df[condition]
             else:
                 best_step_df = df
-            return best_step_df.hist('best_step') #, title='Frequency of best step')
+            best_step_df.hist('best_step') #, title='Frequency of best step')
+        plt.show()
   
     def dataframe_trials(self, metric='val_accuracy', with_reference=False):
+        """DataFrame with trial data"""
+        
         return self.analyzer.load_trials(metric=metric, with_reference=with_reference)
         
     def summary(self):
